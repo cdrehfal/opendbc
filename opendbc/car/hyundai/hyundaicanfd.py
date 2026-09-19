@@ -1,7 +1,7 @@
 import numpy as np
 from opendbc.car import CanBusBase
 from opendbc.car.crc import CRC16_XMODEM
-from opendbc.car.hyundai.values import HyundaiFlags
+from opendbc.car.hyundai.values import HyundaiFlags, ActvACISta, ESA_ActvSta
 from opendbc.sunnypilot.car.hyundai.lead_data_ext import CanFdLeadData
 
 
@@ -67,6 +67,18 @@ def create_steering_messages(packer, CP, CAN, enabled, lat_active, apply_torque,
     if CP.openpilotLongitudinalControl:
       ret.append(packer.make_can_msg("LFA", CAN.ECAN, values))
     ret.append(packer.make_can_msg(lkas_msg, CAN.ACAN, values))
+  elif CP.flags & HyundaiFlags.CANFD_LFA_ALT:
+    # HDA1 + LFA2: replace the camera's LFA_ALT angle command. The camera's LFA (0x12A) is status-only
+    # on these cars and is forwarded untouched by the panda.
+    lfa_alt_values = {
+      "ADAS_ActvACISta": ActvACISta.INIT.value,
+      "ADAS_ActvACILvl2Sta": (ActvACISta.ACTIVE35_ACTIVE if lat_active else ActvACISta.INACTIVE).value,
+      "ADAS_StrAnglReqVal": apply_angle,
+      "ADAS_ACIAnglTqRedcGainVal": apply_torque if lat_active else 0,
+      "FCA_ESA_ActvSta": ESA_ActvSta.INACTIVE.value,
+      "FCA_ESA_TqBstGainVal": 0,
+    }
+    ret.append(packer.make_can_msg("LFA_ALT", CAN.ECAN, lfa_alt_values))
   else:
     ret.append(packer.make_can_msg("LFA", CAN.ECAN, values))
 

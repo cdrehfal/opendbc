@@ -700,3 +700,75 @@ class TestHyundaiCanfdLFASteeringLongAltButtons(TestHyundaiCanfdLFASteeringLongB
 
 if __name__ == "__main__":
   unittest.main()
+
+
+class TestHyundaiCanfdLFAAltAngle(TestHyundaiCanfdAngleSteering):
+  # HDA1 + LFA2 (e.g. 2025+ Ioniq 5 without HDA II): camera steers MDPS with LFA_ALT (0xCB) on E-CAN,
+  # LFA (0x12A) is status-only and must be forwarded from the camera untouched
+  TX_MSGS = [[0xCB, 0], [0x1E0, 0], [0x1CF, 2], [0x1A0, 0]]
+  RELAY_MALFUNCTION_ADDRS = {0: (0xCB, 0x1E0)}
+  FWD_BLACKLISTED_ADDRS = {2: [0xCB, 0x1E0]}
+
+  PT_BUS = 0
+  SCC_BUS = 2
+  STEER_BUS = 0
+  STEER_MSG = "LFA_ALT"
+  BUTTONS_TX_BUS = 2
+  GAS_MSG = ("ACCELERATOR", "ACCELERATOR_PEDAL")
+
+  def setUp(self):
+    self.packer = CANPackerSafety("hyundai_canfd_generated")
+    self.safety = libsafety_py.libsafety
+    self.safety.set_safety_hooks(CarParams.SafetyModel.hyundaiCanfd, HyundaiSafetyFlags.EV_GAS | HyundaiSafetyFlags.CAMERA_SCC |
+                                 HyundaiSafetyFlags.CANFD_ANGLE_STEERING | HyundaiSafetyFlags.CANFD_LFA_ALT)
+    self.safety.init_tests()
+
+  def _angle_cmd_msg(self, angle: float, enabled: bool, increment_timer: bool = True, gain: float = 0.0):
+    if increment_timer:
+      self.safety.set_timer(self.cnt_angle_cmd * int(1e6 / self.LATERAL_FREQUENCY))
+      self.__class__.cnt_angle_cmd += 1
+    values = {"ADAS_StrAnglReqVal": angle, "ADAS_ActvACILvl2Sta": 2 if enabled else 1,
+              "ADAS_ACIAnglTqRedcGainVal": gain}
+    return self.packer.make_can_msg_safety(self.STEER_MSG, self.STEER_BUS, values)
+
+  def test_lfa_forwarded(self):
+    # camera LFA (0x12A) must pass through, and openpilot may never send it
+    self.assertEqual(0, self.safety.safety_fwd_hook(2, 0x12A))
+    self.safety.set_controls_allowed(True)
+    self.assertFalse(self._tx(self.packer.make_can_msg_safety("LFA", 0, {})))
+
+  def test_lfa_alt_esa_blocked(self):
+    self.safety.set_controls_allowed(True)
+    for sig, val in (("ADAS_ActvACISta", 2), ("FCA_ESA_ActvSta", 1), ("FCA_ESA_TqBstGainVal", 0.5)):
+      msg = self.packer.make_can_msg_safety("LFA_ALT", 0, {"ADAS_ActvACILvl2Sta": 1, sig: val})
+      self.assertFalse(self._tx(msg), sig)
+
+  def test_lfa_alt_gain_when_inactive_blocked(self):
+    self.safety.set_controls_allowed(True)
+    self.assertFalse(self._tx(self._angle_cmd_msg(0, False, gain=0.2)))
+    self.assertTrue(self._tx(self._angle_cmd_msg(0, False, gain=0.0)))
+
+  # Angle steering does not use torque — override inherited torque tests
+  def test_steer_safety_check(self):
+    pass
+
+  def test_non_realtime_limit_up(self):
+    pass
+
+  def test_steer_req_bit(self):
+    pass
+
+  def test_steer_req_bit_frames(self):
+    pass
+
+  def test_steer_req_bit_multi_invalid(self):
+    pass
+
+  def test_steer_req_bit_realtime(self):
+    pass
+
+  def test_against_torque_driver(self):
+    pass
+
+  def test_realtime_limits(self):
+    pass
