@@ -774,3 +774,33 @@ class TestHyundaiCanfdLFAAltAngle(TestHyundaiCanfdAngleSteering):
 
   def test_realtime_limits(self):
     pass
+
+
+class TestHyundaiCanfdLFAAltAngleCCNC(TestHyundaiCanfdLFAAltAngle):
+  # ccNC cluster variant: openpilot republishes the camera's CCNC_0x161/0x162 with the ADAS fault bits
+  # cleared, and blocks MDPS (0xEA) from reaching the camera so it never observes the rack executing an
+  # angle request it did not issue.
+  TX_MSGS = [[0xCB, 0], [0x1CF, 2], [0x1A0, 0], [0x161, 0], [0x162, 0], [0xEA, 2]]
+  RELAY_MALFUNCTION_ADDRS = {0: (0xCB, 0x161, 0x162), 2: (0xEA,)}
+  FWD_BLACKLISTED_ADDRS = {2: [0xCB, 0x161, 0x162], 0: [0xEA]}
+
+  def setUp(self):
+    self.packer = CANPackerSafety("hyundai_canfd_generated")
+    self.safety = libsafety_py.libsafety
+    self.safety.set_safety_hooks(CarParams.SafetyModel.hyundaiCanfd, HyundaiSafetyFlags.EV_GAS | HyundaiSafetyFlags.CAMERA_SCC |
+                                 HyundaiSafetyFlags.CANFD_ANGLE_STEERING | HyundaiSafetyFlags.CANFD_LFA_ALT |
+                                 HyundaiSafetyFlags.CCNC)
+    self.safety.init_tests()
+
+  def test_ccnc_cluster_msgs_allowed(self):
+    # openpilot owns the cluster frames, and the camera's copies must not reach the car
+    self.safety.set_controls_allowed(True)
+    for msg, addr in (("CCNC_0x161", 0x161), ("CCNC_0x162", 0x162)):
+      self.assertTrue(self._tx(self.packer.make_can_msg_safety(msg, 0, {})), msg)
+      self.assertEqual(-1, self.safety.safety_fwd_hook(2, addr), msg)
+
+  def test_mdps_not_forwarded_to_camera(self):
+    # the camera must not see the rack reporting an ADAS angle request openpilot made
+    self.assertEqual(-1, self.safety.safety_fwd_hook(0, 0xEA))
+    # the camera's own LFA status still reaches the car
+    self.assertEqual(0, self.safety.safety_fwd_hook(2, 0x12A))

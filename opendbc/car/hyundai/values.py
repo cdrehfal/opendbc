@@ -89,7 +89,9 @@ class HyundaiSafetyFlags(IntFlag):
   FCEV_GAS = 256
   ALT_LIMITS_2 = 512
   CANFD_ANGLE_STEERING = 1024
-  CANFD_LFA_ALT = 2048
+  # Keep CCNC on the same bit as sunnypilot's hkg-angle-steering-2025-hda1 branch
+  CCNC = 2048
+  CANFD_LFA_ALT = 4096
 
 
 # Hyundai/Kia/Genesis SCC (Smart Cruise Control) and steering architecture:
@@ -173,9 +175,14 @@ class HyundaiFlags(IntFlag):
 
   CANFD_ANGLE_STEERING = 2 ** 27
 
+  # ccNC/ccIC cluster cars: the camera drives the cluster's ADAS display with CCNC_0x161 and
+  # CCNC_0x162. openpilot takes both over so it can clear the fault bits the camera raises while
+  # openpilot is steering, and draw its own icons. Same bit as hkg-angle-steering-2025-hda1.
+  CCNC = 2 ** 28
+
   # HDA1 + LFA2 (angle) cars without an ADAS DRV ECU: the camera steers the MDPS directly
   # with LFA_ALT (0xCB) on E-CAN. openpilot replaces 0xCB; LFA (0x12A) is status-only and is forwarded.
-  CANFD_LFA_ALT = 2 ** 28
+  CANFD_LFA_ALT = 2 ** 29
 
 
 @dataclass

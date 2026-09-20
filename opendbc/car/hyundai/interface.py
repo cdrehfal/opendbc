@@ -73,6 +73,11 @@ class CarInterface(CarInterfaceBase):
           # openpilot longitudinal is not supported with LFA_ALT steering yet
           ret.alphaLongitudinalAvailable = False
 
+          # ccNC cluster: the camera drives the cluster's ADAS display with CCNC_0x161/0x162. Detect it
+          # at runtime rather than per-platform, since trims within a platform differ.
+          if {0x161, 0x162}.issubset(fingerprint[CAN.CAM]):
+            ret.flags |= HyundaiFlags.CCNC.value
+
       # Some LKA steering cars have alternative messages for gear checks
       # ICE cars do not have 0x130; GEARS message on 0x40 or 0x70 instead
       if 0x130 not in fingerprint[CAN.ECAN]:
@@ -99,6 +104,8 @@ class CarInterface(CarInterfaceBase):
         ret.safetyConfigs[-1].safetyParam |= HyundaiSafetyFlags.CANFD_ANGLE_STEERING.value
       if ret.flags & HyundaiFlags.CANFD_LFA_ALT:
         ret.safetyConfigs[-1].safetyParam |= HyundaiSafetyFlags.CANFD_LFA_ALT.value
+      if ret.flags & HyundaiFlags.CCNC and not ret.flags & HyundaiFlags.CANFD_LKA_STEER_MSG:
+        ret.safetyConfigs[-1].safetyParam |= HyundaiSafetyFlags.CCNC.value
 
     else:
       # Shared configuration for non CAN-FD cars

@@ -25,6 +25,15 @@
 #define HYUNDAI_CANFD_LFA_ALT_STEERING_COMMON_TX_MSGS(e_can)  \
   {0xCB,  e_can, 24, .check_relay = (e_can) == 0},  /* LFA_ALT */ \
 
+// ccNC cluster: openpilot republishes the camera's cluster frames with the ADAS fault bits cleared.
+// MDPS (0xEA) is blocked from reaching the camera, so the camera never observes the steering rack
+// executing an ADAS angle request it did not issue. Listing 0xEA on the camera bus is what blocks the
+// forward; openpilot never transmits it.
+#define HYUNDAI_CANFD_CCNC_TX_MSGS(e_can, cam)  \
+  {0x161, e_can, 32, .check_relay = (e_can) == 0},  /* CCNC_0x161 */ \
+  {0x162, e_can, 32, .check_relay = (e_can) == 0},  /* CCNC_0x162 */ \
+  {0xEA,  cam,   24, .check_relay = true},          /* MDPS: block car -> camera */ \
+
 #define HYUNDAI_CANFD_SCC_CONTROL_COMMON_TX_MSGS(e_can, longitudinal) \
   {0x1A0, e_can, 32, .check_relay = (longitudinal)},  /* SCC_CONTROL */ \
 
@@ -53,6 +62,7 @@
 static bool hyundai_canfd_alt_buttons = false;
 static bool hyundai_canfd_angle_steering = false;
 static bool hyundai_canfd_lfa_alt = false;  // HDA1 + LFA2: steer with LFA_ALT (0xCB), forward camera LFA (0x12A)
+static bool hyundai_ccnc = false;  // camera drives the cluster ADAS display with CCNC_0x161/0x162
 static bool hyundai_canfd_lka_steer_msg_alt = false;
 static uint8_t hyundai_canfd_angle_model_id = HYUNDAI_ANGLE_MODEL_BASELINE;
 
@@ -294,7 +304,8 @@ static safety_config hyundai_canfd_init(uint16_t param) {
   const uint16_t HYUNDAI_PARAM_CANFD_LKA_STEER_MSG_ALT = 128;
   const uint16_t HYUNDAI_PARAM_CANFD_ALT_BUTTONS = 32;
   const uint16_t HYUNDAI_PARAM_CANFD_ANGLE_STEERING = 1024;
-  const uint16_t HYUNDAI_PARAM_CANFD_LFA_ALT = 2048;
+  const uint16_t HYUNDAI_PARAM_CCNC = 2048;
+  const uint16_t HYUNDAI_PARAM_CANFD_LFA_ALT = 4096;
 
   static const CanMsg HYUNDAI_CANFD_LKA_STEER_MSG_TX_MSGS[] = {
     HYUNDAI_CANFD_LKA_STEER_MSG_COMMON_TX_MSGS(0, 1)
@@ -350,6 +361,7 @@ static safety_config hyundai_canfd_init(uint16_t param) {
   hyundai_canfd_angle_model_id = hyundai_get_angle_model_id(current_safety_param_sp);
   // TODO: test this restriction
   hyundai_canfd_lka_steer_msg_alt = GET_FLAG(param, HYUNDAI_PARAM_CANFD_LKA_STEER_MSG_ALT);
+  hyundai_ccnc = GET_FLAG(param, HYUNDAI_PARAM_CCNC) && !hyundai_canfd_lka_steer_msg;
 
   safety_config ret;
   if (hyundai_longitudinal) {
@@ -448,7 +460,16 @@ static safety_config hyundai_canfd_init(uint16_t param) {
         HYUNDAI_CANFD_SCC_CONTROL_COMMON_TX_MSGS(0, false)
       };
 
-      if (hyundai_canfd_lfa_alt) {
+      static CanMsg hyundai_canfd_lfa_alt_camera_scc_ccnc_tx_msgs[] = {
+        HYUNDAI_CANFD_CRUISE_BUTTON_TX_MSGS(2)
+        HYUNDAI_CANFD_LFA_ALT_STEERING_COMMON_TX_MSGS(0)
+        HYUNDAI_CANFD_SCC_CONTROL_COMMON_TX_MSGS(0, false)
+        HYUNDAI_CANFD_CCNC_TX_MSGS(0, 2)
+      };
+
+      if (hyundai_canfd_lfa_alt && hyundai_ccnc) {
+        SET_TX_MSGS(hyundai_canfd_lfa_alt_camera_scc_ccnc_tx_msgs, ret);
+      } else if (hyundai_canfd_lfa_alt) {
         SET_TX_MSGS(hyundai_canfd_lfa_alt_camera_scc_tx_msgs, ret);
       } else {
         SET_TX_MSGS(hyundai_canfd_lfa_steering_camera_scc_tx_msgs, ret);

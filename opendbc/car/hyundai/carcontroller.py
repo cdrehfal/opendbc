@@ -282,6 +282,7 @@ class CarController(CarControllerBase, EsccCarController, LeadDataCarController,
 
     lka_steering = self.CP.flags & HyundaiFlags.CANFD_LKA_STEER_MSG
     lka_steering_long = lka_steering and self.CP.openpilotLongitudinalControl
+    ccnc_non_hda2 = self.CP.flags & HyundaiFlags.CCNC and not lka_steering
 
     # steering control
     can_sends.extend(hyundaicanfd.create_steering_messages(self.packer, self.CP, self.CAN, CC.enabled, apply_steer_req, apply_torque, self.apply_angle_last
@@ -293,9 +294,17 @@ class CarController(CarControllerBase, EsccCarController, LeadDataCarController,
                                                         self.CP.flags & HyundaiFlags.CANFD_LKA_STEER_MSG_ALT))
 
     # LFA and HDA icons
-    # LFA_ALT cars forward the camera's LFAHDA_CLUSTER instead, keeping the cluster's stock indicators
-    if self.frame % 5 == 0 and (not lka_steering or lka_steering_long) and not self.CP.flags & HyundaiFlags.CANFD_LFA_ALT:
-      can_sends.append(hyundaicanfd.create_lfahda_cluster(self.packer, self.CAN, CC.enabled, self.lfa_icon))
+    if self.frame % 5 == 0 and (not lka_steering or lka_steering_long):
+      if ccnc_non_hda2:
+        # The camera raises FAULT_LSS/LFA/DAS/ESS on the cluster as soon as the MDPS reports that it is
+        # executing an ADAS angle request the camera didn't make. Republish its own frames with those
+        # cleared, and draw our own icons.
+        can_sends.extend(hyundaicanfd.create_ccnc(self.packer, self.CAN, self.CP.openpilotLongitudinalControl, CC.enabled, CC.hudControl,
+                                                  CC.leftBlinker, CC.rightBlinker, CS.msg_161, CS.msg_162, CS.msg_1b5, CS.is_metric,
+                                                  CS.out, CS.main_cruise_enabled, self.lfa_icon))
+      elif not self.CP.flags & HyundaiFlags.CANFD_LFA_ALT:
+        # LFA_ALT cars without ccNC forward the camera's LFAHDA_CLUSTER, keeping the cluster's stock indicators
+        can_sends.append(hyundaicanfd.create_lfahda_cluster(self.packer, self.CAN, CC.enabled, self.lfa_icon))
 
     # blinkers
     if lka_steering and self.CP.flags & HyundaiFlags.CANFD_ENABLE_BLINKERS:
@@ -304,7 +313,7 @@ class CarController(CarControllerBase, EsccCarController, LeadDataCarController,
     if self.CP.openpilotLongitudinalControl:
       if lka_steering:
         can_sends.extend(hyundaicanfd.create_adrv_messages(self.packer, self.CAN, self.frame))
-      else:
+      elif not ccnc_non_hda2:
         can_sends.extend(hyundaicanfd.create_fca_warning_light(self.packer, self.CAN, self.frame))
       if self.frame % 2 == 0:
         can_sends.append(hyundaicanfd.create_acc_control(self.packer, self.CAN, CC.enabled, self.accel_last, accel, stopping, CC.cruiseControl.override,
