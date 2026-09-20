@@ -705,9 +705,9 @@ if __name__ == "__main__":
 class TestHyundaiCanfdLFAAltAngle(TestHyundaiCanfdAngleSteering):
   # HDA1 + LFA2 (e.g. 2025+ Ioniq 5 without HDA II): camera steers MDPS with LFA_ALT (0xCB) on E-CAN,
   # LFA (0x12A) is status-only and must be forwarded from the camera untouched
-  TX_MSGS = [[0xCB, 0], [0x1E0, 0], [0x1CF, 2], [0x1A0, 0]]
-  RELAY_MALFUNCTION_ADDRS = {0: (0xCB, 0x1E0)}
-  FWD_BLACKLISTED_ADDRS = {2: [0xCB, 0x1E0]}
+  TX_MSGS = [[0xCB, 0], [0x1CF, 2], [0x1A0, 0]]
+  RELAY_MALFUNCTION_ADDRS = {0: (0xCB,)}
+  FWD_BLACKLISTED_ADDRS = {2: [0xCB]}
 
   PT_BUS = 0
   SCC_BUS = 2
@@ -731,11 +731,13 @@ class TestHyundaiCanfdLFAAltAngle(TestHyundaiCanfdAngleSteering):
               "ADAS_ACIAnglTqRedcGainVal": gain}
     return self.packer.make_can_msg_safety(self.STEER_MSG, self.STEER_BUS, values)
 
-  def test_lfa_forwarded(self):
-    # camera LFA (0x12A) must pass through, and openpilot may never send it
-    self.assertEqual(0, self.safety.safety_fwd_hook(2, 0x12A))
+  def test_camera_msgs_forwarded(self):
+    # the camera's LFA (0x12A) status and LFAHDA_CLUSTER (0x1E0) indicators must pass through,
+    # and openpilot may never send them
     self.safety.set_controls_allowed(True)
-    self.assertFalse(self._tx(self.packer.make_can_msg_safety("LFA", 0, {})))
+    for msg, addr in (("LFA", 0x12A), ("LFAHDA_CLUSTER", 0x1E0)):
+      self.assertEqual(0, self.safety.safety_fwd_hook(2, addr), msg)
+      self.assertFalse(self._tx(self.packer.make_can_msg_safety(msg, 0, {})), msg)
 
   def test_lfa_alt_esa_blocked(self):
     self.safety.set_controls_allowed(True)

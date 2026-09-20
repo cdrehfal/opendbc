@@ -293,7 +293,8 @@ class CarController(CarControllerBase, EsccCarController, LeadDataCarController,
                                                         self.CP.flags & HyundaiFlags.CANFD_LKA_STEER_MSG_ALT))
 
     # LFA and HDA icons
-    if self.frame % 5 == 0 and (not lka_steering or lka_steering_long):
+    # LFA_ALT cars forward the camera's LFAHDA_CLUSTER instead, keeping the cluster's stock indicators
+    if self.frame % 5 == 0 and (not lka_steering or lka_steering_long) and not self.CP.flags & HyundaiFlags.CANFD_LFA_ALT:
       can_sends.append(hyundaicanfd.create_lfahda_cluster(self.packer, self.CAN, CC.enabled, self.lfa_icon))
 
     # blinkers

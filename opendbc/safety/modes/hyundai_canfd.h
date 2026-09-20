@@ -23,8 +23,7 @@
 
 // HDA1 + LFA2: LFA (0x12A) is status-only and forwarded from the camera, LFA_ALT (0xCB) carries the angle command
 #define HYUNDAI_CANFD_LFA_ALT_STEERING_COMMON_TX_MSGS(e_can)  \
-  {0xCB,  e_can, 24, .check_relay = (e_can) == 0},  /* LFA_ALT */        \
-  {0x1E0, e_can, 16, .check_relay = (e_can) == 0},  /* LFAHDA_CLUSTER */ \
+  {0xCB,  e_can, 24, .check_relay = (e_can) == 0},  /* LFA_ALT */ \
 
 #define HYUNDAI_CANFD_SCC_CONTROL_COMMON_TX_MSGS(e_can, longitudinal) \
   {0x1A0, e_can, 32, .check_relay = (longitudinal)},  /* SCC_CONTROL */ \
