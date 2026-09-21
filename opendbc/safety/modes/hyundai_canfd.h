@@ -254,7 +254,12 @@ static bool hyundai_canfd_tx_hook(const CANPacket_t *msg) {
     bool is_resume = (button == HYUNDAI_BTN_RESUME);
     bool is_set = (button == HYUNDAI_BTN_SET);
 
-    bool allowed = (is_cancel && cruise_engaged_prev) || ((is_resume || is_set) && controls_allowed);
+    // LFA_ALT + ccNC: a bare LFA button tap to the camera, used only to switch the camera's own LFA off.
+    // The camera's steering output is already replaced, so the tap can't steer; no other button may ride along.
+    bool is_lfa_tap = hyundai_canfd_lfa_alt && hyundai_ccnc && (msg->bus == 2U) &&
+                      (msg->data[2] == 0x80U) && ((msg->data[3] & 0xDFU) == 0U);
+
+    bool allowed = (is_cancel && cruise_engaged_prev) || ((is_resume || is_set) && controls_allowed) || is_lfa_tap;
     if (!allowed) {
       tx = false;
     }

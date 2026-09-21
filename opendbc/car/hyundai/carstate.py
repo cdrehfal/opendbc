@@ -71,6 +71,8 @@ class CarState(CarStateBase, EsccCarStateBase, MadsCarState, CarStateExt):
     # used to give the camera a copy of MDPS that is consistent with its own request
     self.mdps_msg = {}
     self.cam_lfa_alt_lvl2 = 1
+    # the camera's own LFA_ICON (0 off, 1 standby, 2 active, 3 handing back), read before we rewrite it
+    self.cam_lfa_icon = 0
 
     # On some cars, CLU15->CF_Clu_VehicleSpeed can oscillate faster than the dash updates. Sample at 5 Hz
     self.cluster_speed = 0
@@ -289,6 +291,7 @@ class CarState(CarStateBase, EsccCarStateBase, MadsCarState, CarStateExt):
       if self.CP.flags & HyundaiFlags.CANFD_LFA_ALT:
         self.mdps_msg = copy.copy(cp.vl["MDPS"])
         self.cam_lfa_alt_lvl2 = int(cp_cam.vl["LFA_ALT"]["ADAS_ActvACILvl2Sta"])
+        self.cam_lfa_icon = int(self.msg_161["LFA_ICON"])
 
     # cruise state
     # CAN FD cars enable on main button press, set available if no TCS faults preventing engagement

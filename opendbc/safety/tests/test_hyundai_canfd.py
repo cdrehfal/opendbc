@@ -11,7 +11,7 @@ from opendbc.car.vehicle_model import VehicleModel, calc_slip_factor
 from opendbc.safety.tests.libsafety import libsafety_py
 import opendbc.safety.tests.common as common
 from opendbc.safety.tests.common import CANPackerSafety, away_round, round_speed
-from opendbc.safety.tests.hyundai_common import HyundaiButtonBase, HyundaiLongitudinalBase
+from opendbc.safety.tests.hyundai_common import Buttons, HyundaiButtonBase, HyundaiLongitudinalBase
 from opendbc.car.lateral import get_max_angle_delta_vm, get_max_angle_vm, AngleSteeringLimitsVM
 from opendbc.car.hyundai.interface import CarInterface
 
@@ -750,6 +750,15 @@ class TestHyundaiCanfdLFAAltAngle(TestHyundaiCanfdAngleSteering):
     self.assertFalse(self._tx(self._angle_cmd_msg(0, False, gain=0.2)))
     self.assertTrue(self._tx(self._angle_cmd_msg(0, False, gain=0.0)))
 
+  def _lfa_tap_msg(self, bus=2, **extra):
+    return self.packer.make_can_msg_safety("CRUISE_BUTTONS", bus, {"LDA_BTN": 1, "SET_ME_1": 1, **extra})
+
+  def test_lfa_tap_blocked_without_ccnc(self):
+    # the camera LFA tap is only for the ccNC takeover
+    for controls_allowed in (True, False):
+      self.safety.set_controls_allowed(controls_allowed)
+      self.assertFalse(self._tx(self._lfa_tap_msg()))
+
   # Angle steering does not use torque — override inherited torque tests
   def test_steer_safety_check(self):
     pass
@@ -809,3 +818,24 @@ class TestHyundaiCanfdLFAAltAngleCCNC(TestHyundaiCanfdLFAAltAngle):
     self.assertEqual(-1, self.safety.safety_fwd_hook(0, 0xEA))
     # the camera's own LFA status still reaches the car
     self.assertEqual(0, self.safety.safety_fwd_hook(2, 0x12A))
+
+  def test_lfa_tap_blocked_without_ccnc(self):
+    pass
+
+  def test_lfa_tap_allowed_to_camera(self):
+    # a bare LFA button tap switches the camera's own (already overridden) LFA off; allowed in any state
+    for controls_allowed in (True, False):
+      self.safety.set_controls_allowed(controls_allowed)
+      self.assertTrue(self._tx(self._lfa_tap_msg()))
+
+  def test_lfa_tap_only_to_camera(self):
+    self.assertFalse(self._tx(self._lfa_tap_msg(bus=0)))
+    self.assertFalse(self._tx(self._lfa_tap_msg(bus=1)))
+
+  def test_lfa_tap_no_other_buttons(self):
+    # nothing may ride along with the tap: cruise buttons, either MAIN, or the paddles
+    self.safety.set_controls_allowed(False)
+    for extra in ({"CRUISE_BUTTONS": Buttons.RESUME}, {"CRUISE_BUTTONS": Buttons.SET}, {"CRUISE_BUTTONS": Buttons.CANCEL},
+                  {"ADAPTIVE_CRUISE_MAIN_BTN": 1}, {"NORMAL_CRUISE_MAIN_BTN": 1},
+                  {"LEFT_PADDLE": 1}, {"RIGHT_PADDLE": 1}):
+      self.assertFalse(self._tx(self._lfa_tap_msg(**extra)), extra)
