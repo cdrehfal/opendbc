@@ -171,8 +171,25 @@ def create_mdps_mirror(packer, CAN, mdps_msg, cam_lvl2_request, counter):
   return packer.make_can_msg("MDPS", CAN.CAM, values)
 
 
+# matches LANE_CHANGE_SPEED_MIN in this fork's sunnypilot desire_helper.py
+LANE_CHANGE_SPEED_MIN = 50 * CV.MPH_TO_MS
+AUTO_LANE_CHANGE_OFF = -1
+
+
+def lane_change_available(v_ego: float, CC_SP) -> bool:
+  if v_ego < LANE_CHANGE_SPEED_MIN:
+    return False
+  for p in CC_SP.params:
+    if p.key == "AutoLaneChangeTimer":
+      try:
+        return int(p.value) != AUTO_LANE_CHANGE_OFF
+      except ValueError:
+        return True
+  return True
+
+
 def create_ccnc(packer, CAN, openpilotLongitudinalControl, enabled, hud, leftBlinker, rightBlinker, msg_161, msg_162, msg_1b5,
-                is_metric, out, main_cruise_enabled, lfa_icon):
+                is_metric, out, main_cruise_enabled, lfa_icon, lane_change_available=True):
   for f in {"FAULT_LSS", "FAULT_HDA", "FAULT_DAS", "FAULT_LFA", "FAULT_DAW", "FAULT_ESS"}:
     msg_162[f] = 0
   if msg_161["ALERTS_2"] == 5:
@@ -184,8 +201,10 @@ def create_ccnc(packer, CAN, openpilotLongitudinalControl, enabled, hud, leftBli
   if msg_161["SOUNDS_4"] == 2 and msg_161["LFA_ICON"] in (3, 0,):
     msg_161["SOUNDS_4"] = 0
 
-  LANE_CHANGE_SPEED_MIN = 8.9408
-  anyBlinker = leftBlinker or rightBlinker
+  # lane-change graphics (the lane-change icon, arrows and the lanes sliding over) only when openpilot would
+  # actually change lanes: fast enough and lane changes switched on. Otherwise the blinker is just a turn.
+  anyBlinker = (leftBlinker or rightBlinker) and lane_change_available
+  leftBlinker, rightBlinker = leftBlinker and lane_change_available, rightBlinker and lane_change_available
   curvature = {i: (31 if i == -1 else 13 - abs(i + 15)) if i < 0 else 15 + i for i in range(-15, 16)}
 
   # The wheel is lit only while lateral is actually active. lfa_icon is 2 when steering, 3 while
@@ -200,8 +219,8 @@ def create_ccnc(packer, CAN, openpilotLongitudinalControl, enabled, hud, leftBli
     "LANELINE_CURVATURE": curvature.get(max(-15, min(int(out.steeringAngleDeg / 4.5), 15)), 14) if lfa_icon and not anyBlinker else 15,
     "LANELINE_LEFT": (0 if not lfa_icon else 1 if not hud.leftLaneVisible else 4 if hud.leftLaneDepart else 6 if anyBlinker else 2),
     "LANELINE_RIGHT": (0 if not lfa_icon else 1 if not hud.rightLaneVisible else 4 if hud.rightLaneDepart else 6 if anyBlinker else 2),
-    "LCA_LEFT_ICON": (0 if not lfa_icon or out.vEgo < LANE_CHANGE_SPEED_MIN else 1 if out.leftBlindspot else 2 if anyBlinker else 4),
-    "LCA_RIGHT_ICON": (0 if not lfa_icon or out.vEgo < LANE_CHANGE_SPEED_MIN else 1 if out.rightBlindspot else 2 if anyBlinker else 4),
+    "LCA_LEFT_ICON": (0 if not lfa_icon or not lane_change_available else 1 if out.leftBlindspot else 2 if anyBlinker else 4),
+    "LCA_RIGHT_ICON": (0 if not lfa_icon or not lane_change_available else 1 if out.rightBlindspot else 2 if anyBlinker else 4),
     "LCA_LEFT_ARROW": 2 if leftBlinker else 0,
     "LCA_RIGHT_ARROW": 2 if rightBlinker else 0,
   })

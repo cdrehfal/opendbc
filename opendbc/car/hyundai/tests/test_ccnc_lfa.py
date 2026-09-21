@@ -55,3 +55,52 @@ class TestCameraLfaOff:
     start = 3 * ON_FRAMES
     taps = run(c, ON_FRAMES, 2, start=start)
     assert taps == [start - 1 + round(USER_BUTTON_QUIET / DT_CTRL)]
+
+
+class TestCcncLaneChangeIcon:
+  # the dash lane-change graphics follow openpilot's lane-change availability: >= 50 mph and not switched off
+  def _cc_sp(self, timer=None):
+    from opendbc.car import structs
+    cc_sp = structs.CarControlSP()
+    if timer is not None:
+      cc_sp.params = [structs.CarControlSP.Param(key="AutoLaneChangeTimer", value=str(timer).encode(), type="int")]
+    return cc_sp
+
+  def test_available(self):
+    from opendbc.car.common.conversions import Conversions as CV
+    from opendbc.car.hyundai.hyundaicanfd import lane_change_available
+    assert not lane_change_available(49 * CV.MPH_TO_MS, self._cc_sp(3))
+    assert lane_change_available(51 * CV.MPH_TO_MS, self._cc_sp(3))
+    assert lane_change_available(51 * CV.MPH_TO_MS, self._cc_sp(0))
+    assert not lane_change_available(70 * CV.MPH_TO_MS, self._cc_sp(-1))
+    assert lane_change_available(70 * CV.MPH_TO_MS, self._cc_sp())  # param not passed: behave as before
+
+  def _icons(self, available, left_blinker=True):
+    from types import SimpleNamespace as NS
+    from opendbc.can import CANPacker, CANParser
+    from opendbc.car import gen_empty_fingerprint
+    from opendbc.car.hyundai.hyundaicanfd import CanBus, create_ccnc
+    packer = CANPacker("hyundai_canfd_generated")
+    parser = CANParser("hyundai_canfd_generated", [("CCNC_0x161", 20)], 0)
+    names = [s.name for s in packer.dbc.addr_to_msg[0x161].sigs.values()] if hasattr(packer, "dbc") else []
+    msg_161 = dict.fromkeys(names, 0) if names else {}
+    msg_162 = {}
+    msg_1b5 = {"Info_LftLnPosVal": -1.7, "Info_RtLnPosVal": 1.7, "Info_LftLnQualSta": 3, "Info_RtLnQualSta": 3,
+               "Longitudinal_Distance": 0}
+    hud = NS(leftLaneVisible=True, rightLaneVisible=True, leftLaneDepart=False, rightLaneDepart=False, leadDistanceBars=2,
+             leadVisible=False)
+    out = NS(steeringAngleDeg=0.0, vEgo=30.0, leftBlindspot=False, rightBlindspot=False, vCruiseCluster=0)
+    msgs = create_ccnc(packer, CanBus(None, gen_empty_fingerprint()), False, True, hud, left_blinker, False, msg_161, msg_162,
+                       msg_1b5, False, out, True, 2, available)
+    parser.update([(0, [(m[0], m[1], 0) for m in msgs])])
+    return parser.vl["CCNC_0x161"]
+
+  def test_icon_hidden_when_unavailable(self):
+    v = self._icons(False)
+    assert v["LCA_LEFT_ICON"] == 0 and v["LCA_RIGHT_ICON"] == 0 and v["LCA_LEFT_ARROW"] == 0
+    assert v["LANELINE_LEFT"] == 2  # plain lane line, not the lane-change style
+
+  def test_icon_shown_when_available(self):
+    v = self._icons(True)
+    assert v["LCA_LEFT_ICON"] == 2 and v["LCA_LEFT_ARROW"] == 2
+    assert v["LANELINE_LEFT"] == 6

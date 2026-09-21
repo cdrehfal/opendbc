@@ -211,7 +211,7 @@ class CarController(CarControllerBase, EsccCarController, LeadDataCarController,
     # *** CAN/CAN FD specific ***
     if self.CP.flags & HyundaiFlags.CANFD:
       can_sends.extend(self.create_canfd_msgs(apply_steer_req, apply_torque, set_speed_in_units, accel,
-                                              stopping, hud_control, CS, CC))
+                                              stopping, hud_control, CS, CC, CC_SP))
     else:
       # Hold torque with induced temporary fault when cutting the actuation bit
       # FIXME: we don't use this with CAN FD?
@@ -280,7 +280,7 @@ class CarController(CarControllerBase, EsccCarController, LeadDataCarController,
 
     return can_sends
 
-  def create_canfd_msgs(self, apply_steer_req, apply_torque, set_speed_in_units, accel, stopping, hud_control, CS, CC):
+  def create_canfd_msgs(self, apply_steer_req, apply_torque, set_speed_in_units, accel, stopping, hud_control, CS, CC, CC_SP):
     can_sends = []
 
     lka_steering = self.CP.flags & HyundaiFlags.CANFD_LKA_STEER_MSG
@@ -313,7 +313,8 @@ class CarController(CarControllerBase, EsccCarController, LeadDataCarController,
         # cleared, and draw our own icons.
         can_sends.extend(hyundaicanfd.create_ccnc(self.packer, self.CAN, self.CP.openpilotLongitudinalControl, CC.enabled, CC.hudControl,
                                                   CC.leftBlinker, CC.rightBlinker, CS.msg_161, CS.msg_162, CS.msg_1b5, CS.is_metric,
-                                                  CS.out, CS.main_cruise_enabled, self.lfa_icon))
+                                                  CS.out, CS.main_cruise_enabled, self.lfa_icon,
+                                                  hyundaicanfd.lane_change_available(CS.out.vEgo, CC_SP)))
       elif not self.CP.flags & HyundaiFlags.CANFD_LFA_ALT:
         # LFA_ALT cars without ccNC forward the camera's LFAHDA_CLUSTER, keeping the cluster's stock indicators
         can_sends.append(hyundaicanfd.create_lfahda_cluster(self.packer, self.CAN, CC.enabled, self.lfa_icon))
