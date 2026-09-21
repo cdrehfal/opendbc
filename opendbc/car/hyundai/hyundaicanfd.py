@@ -153,6 +153,23 @@ def create_lfahda_cluster(packer, CAN, enabled, lfa_icon):
 
 
 
+def create_mdps_mirror(packer, CAN, mdps_msg, cam_lvl2_request, counter):
+  """Copy of the real MDPS frame for the camera bus, consistent with the camera's own request.
+
+  The camera watches the rack's Level 2 ADAS state. While openpilot steers through LFA_ALT the rack
+  reports it is executing a Level 2 request (2) that the camera never made (it asks for 1), and the
+  camera responds by faulting LSS/LFA/DAS/ESS and shutting down ISLA. Report back whatever the
+  camera requested instead. Level 2 faults concern only that channel, so they are cleared unless the
+  camera is using it. Every other signal, including all other fault and lamp states, is the rack's own.
+  """
+  values = dict(mdps_msg)
+  values["COUNTER"] = counter
+  values["MDPS_ADASAciActvSta_Lv2"] = cam_lvl2_request
+  if cam_lvl2_request != ActvACISta.ACTIVE35_ACTIVE.value:
+    values["MDPS_ADAS_AciFltSig_Lv2"] = 0
+  return packer.make_can_msg("MDPS", CAN.CAM, values)
+
+
 def create_ccnc(packer, CAN, openpilotLongitudinalControl, enabled, hud, leftBlinker, rightBlinker, msg_161, msg_162, msg_1b5,
                 is_metric, out, main_cruise_enabled, lfa_icon):
   for f in {"FAULT_LSS", "FAULT_HDA", "FAULT_DAS", "FAULT_LFA", "FAULT_DAW", "FAULT_ESS"}:

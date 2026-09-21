@@ -111,6 +111,7 @@ class CarController(CarControllerBase, EsccCarController, LeadDataCarController,
     self.packer = CANPacker(dbc_names[Bus.pt])
     self.angle_limit_counter = 0
     self.angle_filter = FirstOrderFilter(0.0, 0.2, DT_CTRL)
+    self.mdps_mirror_counter = None  # alive counter for the camera's copy of MDPS (LFA_ALT + ccNC)
 
     # Vehicle model used for lateral limiting
     self.VM = VehicleModel(CP)
@@ -292,6 +293,15 @@ class CarController(CarControllerBase, EsccCarController, LeadDataCarController,
     if self.frame % 5 == 0 and lka_steering:
       can_sends.append(hyundaicanfd.create_suppress_lfa(self.packer, self.CAN, CS.lfa_block_msg,
                                                         self.CP.flags & HyundaiFlags.CANFD_LKA_STEER_MSG_ALT))
+
+    # LFA_ALT + ccNC: the camera is cut off from the real MDPS; give it a consistent copy every frame.
+    # The real rack never skips its alive counter, so the copy keeps its own continuous one.
+    if ccnc_non_hda2 and self.CP.flags & HyundaiFlags.CANFD_LFA_ALT and CS.mdps_msg:
+      if self.mdps_mirror_counter is None:
+        self.mdps_mirror_counter = int(CS.mdps_msg["COUNTER"])
+      self.mdps_mirror_counter = (self.mdps_mirror_counter + 1) % 256
+      can_sends.append(hyundaicanfd.create_mdps_mirror(self.packer, self.CAN, CS.mdps_msg, CS.cam_lfa_alt_lvl2,
+                                                       self.mdps_mirror_counter))
 
     # LFA and HDA icons
     if self.frame % 5 == 0 and (not lka_steering or lka_steering_long):

@@ -67,6 +67,10 @@ class CarState(CarStateBase, EsccCarStateBase, MadsCarState, CarStateExt):
 
     # ccNC cluster frames from the camera, republished with the fault bits cleared
     self.msg_161, self.msg_162, self.msg_1b5 = {}, {}, {}
+    # LFA_ALT + ccNC: the real MDPS frame and the Level 2 state the camera itself is requesting,
+    # used to give the camera a copy of MDPS that is consistent with its own request
+    self.mdps_msg = {}
+    self.cam_lfa_alt_lvl2 = 1
 
     # On some cars, CLU15->CF_Clu_VehicleSpeed can oscillate faster than the dash updates. Sample at 5 Hz
     self.cluster_speed = 0
@@ -282,6 +286,9 @@ class CarState(CarStateBase, EsccCarStateBase, MadsCarState, CarStateExt):
     if self.CP.flags & HyundaiFlags.CCNC and not self.CP.flags & HyundaiFlags.CANFD_LKA_STEER_MSG:
       self.msg_161, self.msg_162, self.msg_1b5 = map(copy.copy, (cp_cam.vl["CCNC_0x161"], cp_cam.vl["CCNC_0x162"],
                                                                  cp_cam.vl["FR_CMR_03_50ms"]))
+      if self.CP.flags & HyundaiFlags.CANFD_LFA_ALT:
+        self.mdps_msg = copy.copy(cp.vl["MDPS"])
+        self.cam_lfa_alt_lvl2 = int(cp_cam.vl["LFA_ALT"]["ADAS_ActvACILvl2Sta"])
 
     # cruise state
     # CAN FD cars enable on main button press, set available if no TCS faults preventing engagement

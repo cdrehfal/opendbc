@@ -799,6 +799,11 @@ class TestHyundaiCanfdLFAAltAngleCCNC(TestHyundaiCanfdLFAAltAngle):
       self.assertTrue(self._tx(self.packer.make_can_msg_safety(msg, 0, {})), msg)
       self.assertEqual(-1, self.safety.safety_fwd_hook(2, addr), msg)
 
+  def test_mdps_mirror_allowed_to_camera(self):
+    # openpilot may send its own copy of MDPS to the camera, and only to the camera
+    self.assertTrue(self._tx(self.packer.make_can_msg_safety("MDPS", 2, {})))
+    self.assertFalse(self._tx(self.packer.make_can_msg_safety("MDPS", 0, {})))
+
   def test_mdps_not_forwarded_to_camera(self):
     # the camera must not see the rack reporting an ADAS angle request openpilot made
     self.assertEqual(-1, self.safety.safety_fwd_hook(0, 0xEA))

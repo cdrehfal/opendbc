@@ -267,3 +267,46 @@ class TestHyundaiFingerprint(unittest.TestCase):
         platforms_with_shared_codes.add(platform)
 
     assert platforms_with_shared_codes == excluded_platforms
+
+
+class TestHyundaiCanfdMdpsMirror(unittest.TestCase):
+  # LFA_ALT + ccNC: the camera gets a copy of MDPS that agrees with its own Level 2 request
+  def setUp(self):
+    from opendbc.can import CANPacker, CANParser
+    self.packer = CANPacker("hyundai_canfd_generated")
+    self.parser = CANParser("hyundai_canfd_generated", [("MDPS", 100)], 2)
+
+  def _rack(self, **overrides):
+    values = {"MDPS_ADASAciActvSta_Lv2": 2, "MDPS_ADAS_AciFltSig_Lv2": 0, "MDPS_EstStrAnglVal": -12.3,
+              "MDPS_StrTqSnsrVal": 17, "MDPS_OutTqVal": 1.4, "MDPS_LkaPlgInSta": 1, "MDPS_WrngLmpSta": 0, "COUNTER": 41}
+    values.update(overrides)
+    return values
+
+  def _roundtrip(self, msg):
+    self.parser.update([(0, [(msg[0], msg[1], msg[2])])])
+    return self.parser.vl["MDPS"]
+
+  def test_reports_the_cameras_own_request(self):
+    from opendbc.car.hyundai.hyundaicanfd import create_mdps_mirror
+    CAN = CanBus(None, gen_empty_fingerprint())
+    for cam_req in (0, 1, 2):
+      msg = create_mdps_mirror(self.packer, CAN, self._rack(), cam_req, 7)
+      self.assertEqual(msg[2], CAN.CAM)
+      out = self._roundtrip(msg)
+      self.assertEqual(out["MDPS_ADASAciActvSta_Lv2"], cam_req)
+      self.assertEqual(out["COUNTER"], 7)
+
+  def test_everything_else_passes_through(self):
+    from opendbc.car.hyundai.hyundaicanfd import create_mdps_mirror
+    CAN = CanBus(None, gen_empty_fingerprint())
+    rack = self._rack(MDPS_WrngLmpSta=1)
+    out = self._roundtrip(create_mdps_mirror(self.packer, CAN, rack, 1, 7))
+    for sig in ("MDPS_EstStrAnglVal", "MDPS_StrTqSnsrVal", "MDPS_OutTqVal", "MDPS_LkaPlgInSta", "MDPS_WrngLmpSta"):
+      self.assertAlmostEqual(out[sig], rack[sig], places=3, msg=sig)
+
+  def test_level2_fault_only_reported_on_the_cameras_channel(self):
+    from opendbc.car.hyundai.hyundaicanfd import create_mdps_mirror
+    CAN = CanBus(None, gen_empty_fingerprint())
+    faulted = self._rack(MDPS_ADAS_AciFltSig_Lv2=2)
+    self.assertEqual(self._roundtrip(create_mdps_mirror(self.packer, CAN, faulted, 1, 7))["MDPS_ADAS_AciFltSig_Lv2"], 0)
+    self.assertEqual(self._roundtrip(create_mdps_mirror(self.packer, CAN, faulted, 2, 8))["MDPS_ADAS_AciFltSig_Lv2"], 2)
