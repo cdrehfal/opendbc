@@ -7,7 +7,7 @@ from opendbc.car import Bus, DT_CTRL, make_tester_present_msg, structs, rate_lim
 from opendbc.car.lateral import apply_driver_steer_torque_limits, common_fault_avoidance, apply_steer_angle_limits_vm
 from opendbc.car.common.conversions import Conversions as CV
 from opendbc.car.hyundai import hyundaicanfd, hyundaican
-from opendbc.car.hyundai.ccnc_lfa import CameraLfaOff, TAP_COPIES
+from opendbc.car.hyundai.ccnc_lfa import CameraLfaOff, COPIES_PER_FRAME
 from opendbc.car.hyundai.hyundaicanfd import CanBus
 from opendbc.car.hyundai.values import HyundaiFlags, Buttons, CarControllerParams, CAR
 from opendbc.car.interfaces import CarControllerBase
@@ -375,15 +375,15 @@ class CarController(CarControllerBase, EsccCarController, LeadDataCarController,
               can_sends.append(hyundaicanfd.create_buttons(self.packer, self.CP, self.CAN, CS.buttons_counter + 1, Buttons.RES_ACCEL))
             self.last_button_frame = self.frame
 
-      # LFA_ALT + ccNC: tap the camera's LFA button to keep its own LFA off (see ccnc_lfa.py)
+      # LFA_ALT + ccNC: press the camera's LFA button to keep its own LFA off (see ccnc_lfa.py)
       if ccnc_non_hda2 and self.CP.flags & HyundaiFlags.CANFD_LFA_ALT:
-        user_button = bool(CS.cruise_buttons[-1] or CS.main_buttons[-1] or CS.lda_button)
-        button_free = (self.frame - self.last_button_frame) * DT_CTRL > 0.25 and \
-                      not CC.cruiseControl.cancel and not CC.cruiseControl.resume
-        if self.camera_lfa_off.update(self.frame, CS.cam_lfa_icon, user_button or not button_free):
-          for _ in range(TAP_COPIES):
+        # hold off while the driver is on any wheel button or openpilot is sending cancel/resume itself
+        user_button = bool(CS.cruise_buttons[-1] or CS.main_buttons[-1] or CS.lda_button) or \
+                      CC.cruiseControl.cancel or CC.cruiseControl.resume
+        if self.camera_lfa_off.update(self.frame, CS.cam_lfa_icon, user_button):
+          # the counter follows the car's own stream, one step ahead, so the held press reads as continuous
+          for _ in range(COPIES_PER_FRAME):
             can_sends.append(hyundaicanfd.create_buttons(self.packer, self.CP, self.CAN, (CS.buttons_counter + 1) % 0x10,
                                                          Buttons.NONE, lda=True))
-          self.last_button_frame = self.frame
 
     return can_sends

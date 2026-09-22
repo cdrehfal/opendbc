@@ -1,60 +1,84 @@
 from opendbc.car import DT_CTRL
-from opendbc.car.hyundai.ccnc_lfa import CameraLfaOff, ON_TIME, RETRY_TIME, USER_BUTTON_QUIET, MAX_TRIES
+from opendbc.car.hyundai.ccnc_lfa import CameraLfaOff, ON_TIME, PRESS_TIME, RETRY_TIME, SLOW_RETRY_TIME, USER_BUTTON_QUIET, MAX_TRIES
 
 ON_FRAMES = int(ON_TIME / DT_CTRL)
+PRESS_FRAMES = int(PRESS_TIME / DT_CTRL)
 RETRY_FRAMES = int(RETRY_TIME / DT_CTRL)
+SLOW_FRAMES = int(SLOW_RETRY_TIME / DT_CTRL)
 
 
 def run(c, frames, icon, start=0, user_button=False):
   return [f for f in range(start, start + frames) if c.update(f, icon, user_button)]
 
 
+def presses(held):
+  """group consecutive held frames into (start, length)"""
+  out = []
+  for f in held:
+    if out and f == out[-1][0] + out[-1][1]:
+      out[-1][1] += 1
+    else:
+      out.append([f, 1])
+  return [tuple(p) for p in out]
+
+
 class TestCameraLfaOff:
-  def test_off_never_taps(self):
+  def test_off_never_presses(self):
     c = CameraLfaOff()
     assert run(c, 10 * ON_FRAMES, 0) == []
 
-  def test_blink_never_taps(self):
+  def test_blink_never_presses(self):
     # handback blink (3/0) is not "on"
     c = CameraLfaOff()
-    taps = [f for f in range(2000) if c.update(f, 3 if (f // 25) % 2 else 0, False)]
-    assert taps == []
+    held = [f for f in range(2000) if c.update(f, 3 if (f // 25) % 2 else 0, False)]
+    assert held == []
 
-  def test_taps_once_after_on_time(self):
+  def test_presses_once_held_for_press_time(self):
     for icon in (1, 2):
       c = CameraLfaOff()
-      taps = run(c, ON_FRAMES + 5, icon)
-      assert taps == [ON_FRAMES - 1]
+      p = presses(run(c, ON_FRAMES + PRESS_FRAMES + 5, icon))
+      assert p == [(ON_FRAMES - 1, PRESS_FRAMES)]
 
   def test_short_on_ignored(self):
     c = CameraLfaOff()
     assert run(c, ON_FRAMES - 10, 2) == []
     assert run(c, 50, 0, start=ON_FRAMES) == []
 
-  def test_retries_then_gives_up(self):
+  def test_quick_retries_then_slow(self):
     c = CameraLfaOff()
-    taps = run(c, ON_FRAMES + RETRY_FRAMES * (MAX_TRIES + 3), 2)
-    assert len(taps) == MAX_TRIES
-    assert all(b - a >= RETRY_FRAMES for a, b in zip(taps, taps[1:], strict=False))
+    n = ON_FRAMES + RETRY_FRAMES * MAX_TRIES + SLOW_FRAMES * 3
+    p = presses(run(c, n, 2))
+    assert len(p) == MAX_TRIES + 3
+    starts = [s for s, _ in p]
+    gaps = [b - a for a, b in zip(starts, starts[1:], strict=False)]
+    assert all(g >= RETRY_FRAMES for g in gaps[:MAX_TRIES - 1])
+    assert all(g >= SLOW_FRAMES for g in gaps[MAX_TRIES - 1:])
+    assert all(length == PRESS_FRAMES for _, length in p)
 
   def test_budget_resets_when_camera_goes_off(self):
     c = CameraLfaOff()
     frame = 0
     for _ in range(3):
-      taps = run(c, ON_FRAMES + RETRY_FRAMES * (MAX_TRIES + 1), 2, start=frame)
-      assert len(taps) == MAX_TRIES
-      frame += ON_FRAMES + RETRY_FRAMES * (MAX_TRIES + 1)
+      p = presses(run(c, ON_FRAMES + RETRY_FRAMES * MAX_TRIES, 2, start=frame))
+      assert len(p) == MAX_TRIES
+      frame += ON_FRAMES + RETRY_FRAMES * MAX_TRIES
       run(c, 2 * ON_FRAMES, 0, start=frame)
       frame += 2 * ON_FRAMES
 
   def test_waits_for_driver_buttons(self):
     c = CameraLfaOff()
-    # driver holding a button the whole time: never tap
+    # driver holding a button the whole time: never press
     assert run(c, 3 * ON_FRAMES, 2, user_button=True) == []
-    # released: tap only after the quiet time
+    # released: press only after the quiet time
     start = 3 * ON_FRAMES
-    taps = run(c, ON_FRAMES, 2, start=start)
-    assert taps == [start - 1 + round(USER_BUTTON_QUIET / DT_CTRL)]
+    p = presses(run(c, ON_FRAMES, 2, start=start))
+    assert p == [(start - 1 + round(USER_BUTTON_QUIET / DT_CTRL), PRESS_FRAMES)]
+
+  def test_driver_button_aborts_press(self):
+    c = CameraLfaOff()
+    run(c, ON_FRAMES + 3, 2)  # press in progress
+    assert c.update(ON_FRAMES + 3, 2, True) is False
+    assert run(c, 10, 2, start=ON_FRAMES + 4) == []
 
 
 class TestCcncLaneChangeIcon:
