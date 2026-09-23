@@ -50,7 +50,8 @@ class IntelligentCruiseButtonManagementInterface(IntelligentCruiseButtonManageme
       # TODO: resume for alt button cars
       pass
     else:
-      if (self.frame - self.last_button_frame) * DT_CTRL > 0.2:
+      # Fork: 0.15 s cycles instead of 0.2 (the car accepted one step per 0.25 s at 0.2; aim for ~5 mph/s)
+      if (self.frame - self.last_button_frame) * DT_CTRL > 0.15:
         self.button_frame += 1
         button_counter_offset = [1, 1, 0, None][self.button_frame % 4]
         if button_counter_offset is not None:
