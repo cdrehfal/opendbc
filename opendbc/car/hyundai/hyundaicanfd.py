@@ -219,11 +219,8 @@ def create_ccnc(packer, CAN, openpilotLongitudinalControl, enabled, hud, leftBli
     "LANELINE_CURVATURE": curvature.get(max(-15, min(int(out.steeringAngleDeg / 4.5), 15)), 14) if lfa_icon and not anyBlinker else 15,
     "LANELINE_LEFT": (0 if not lfa_icon else 1 if not hud.leftLaneVisible else 4 if hud.leftLaneDepart else 6 if anyBlinker else 2),
     "LANELINE_RIGHT": (0 if not lfa_icon else 1 if not hud.rightLaneVisible else 4 if hud.rightLaneDepart else 6 if anyBlinker else 2),
-    # No "available" (code 4, white) state: that code is from the HDA II clusters, and this cluster appears to draw it
-    # as an empty box next to the LFA wheel. Show the icon only when it means something: green with the blinker on,
-    # grey when a car is in the blind spot.
-    "LCA_LEFT_ICON": (0 if not lfa_icon or not lane_change_available else 1 if out.leftBlindspot else 2 if anyBlinker else 0),
-    "LCA_RIGHT_ICON": (0 if not lfa_icon or not lane_change_available else 1 if out.rightBlindspot else 2 if anyBlinker else 0),
+    "LCA_LEFT_ICON": (0 if not lfa_icon or not lane_change_available else 1 if out.leftBlindspot else 2 if anyBlinker else 4),
+    "LCA_RIGHT_ICON": (0 if not lfa_icon or not lane_change_available else 1 if out.rightBlindspot else 2 if anyBlinker else 4),
     "LCA_LEFT_ARROW": 2 if leftBlinker else 0,
     "LCA_RIGHT_ARROW": 2 if rightBlinker else 0,
   })

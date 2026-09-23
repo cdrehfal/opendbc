@@ -128,8 +128,3 @@ class TestCcncLaneChangeIcon:
     v = self._icons(True)
     assert v["LCA_LEFT_ICON"] == 2 and v["LCA_LEFT_ARROW"] == 2
     assert v["LANELINE_LEFT"] == 6
-
-  def test_no_white_available_icon(self):
-    # available but no blinker and nothing in the blind spot: icon hidden, never code 4
-    v = self._icons(True, left_blinker=False)
-    assert v["LCA_LEFT_ICON"] == 0 and v["LCA_RIGHT_ICON"] == 0
