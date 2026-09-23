@@ -128,30 +128,3 @@ class TestCcncLaneChangeIcon:
     v = self._icons(True)
     assert v["LCA_LEFT_ICON"] == 2 and v["LCA_LEFT_ARROW"] == 2
     assert v["LANELINE_LEFT"] == 6
-
-
-class TestLfaAltCurveCompensation:
-  def test_straight_ahead_unchanged(self):
-    from opendbc.car.hyundai.carcontroller import lfa_alt_curve_compensation
-    for a in (0.0, 0.5, -0.9, 1.0, -1.0):
-      assert lfa_alt_curve_compensation(a) == a
-
-  def test_full_gain_in_curves_and_symmetric(self):
-    from opendbc.car.hyundai.carcontroller import lfa_alt_curve_compensation, LFA_ALT_CURVE_GAIN
-    for a in (3.0, 5.0, 12.0, 20.0):
-      assert abs(lfa_alt_curve_compensation(a) - a * (1 + LFA_ALT_CURVE_GAIN)) < 1e-9
-      assert lfa_alt_curve_compensation(-a) == -lfa_alt_curve_compensation(a)
-
-  def test_extra_capped_for_tight_turns(self):
-    from opendbc.car.hyundai.carcontroller import lfa_alt_curve_compensation, LFA_ALT_CURVE_MAX_EXTRA_DEG
-    for a in (40.0, 90.0, 300.0):
-      assert abs(lfa_alt_curve_compensation(a) - a - LFA_ALT_CURVE_MAX_EXTRA_DEG) < 1e-9
-      assert abs(lfa_alt_curve_compensation(-a) + a + LFA_ALT_CURVE_MAX_EXTRA_DEG) < 1e-9
-
-  def test_continuous_and_monotonic(self):
-    import numpy as np
-    from opendbc.car.hyundai.carcontroller import lfa_alt_curve_compensation
-    xs = np.linspace(0, 10, 2001)
-    ys = np.array([lfa_alt_curve_compensation(x) for x in xs])
-    assert np.all(np.diff(ys) > 0)
-    assert np.max(np.abs(np.diff(ys))) < 0.02  # no jumps at the ramp ends

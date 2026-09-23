@@ -42,21 +42,6 @@ def get_baseline_safety_cp():
   return CarInterface.get_non_essential_params(ANGLE_SAFETY_BASELINE_MODEL)
 
 
-# LFA_ALT (HDA1 angle steering): in steady curves the rack settles ~9% short of the commanded angle
-# (v5 drive home: 4.9k steady samples over 17 segments, 0.89-0.93 at every speed band, both directions and
-# 0.5-4 m/s^2 lateral accel; straights have no error). The car then drifts to the outside of curves.
-# Ask for a little more angle in curves. Deliberately conservative: closes about two thirds of the gap.
-LFA_ALT_CURVE_GAIN = 0.06
-LFA_ALT_CURVE_RAMP_DEG = (1.0, 3.0)  # no change near straight ahead (covers the ~1 deg sensor offset), full gain from 3 deg
-LFA_ALT_CURVE_MAX_EXTRA_DEG = 1.5    # measured shortfall was <= ~1 deg up to 40 deg; don't add more at tight low-speed turns
-
-
-def lfa_alt_curve_compensation(angle: float, gain: float = LFA_ALT_CURVE_GAIN) -> float:
-  ramp = float(np.interp(abs(angle), LFA_ALT_CURVE_RAMP_DEG, [0.0, 1.0]))
-  extra = min(abs(angle) * gain * ramp, LFA_ALT_CURVE_MAX_EXTRA_DEG)
-  return angle + float(np.sign(angle)) * extra
-
-
 def compute_torque_reduction_gain(steering_torque, v_ego, lat_active, last_gain):
   if lat_active:
     ceiling = np.interp(v_ego, [0.5, 1.5], [1.0, 0.85])
@@ -168,10 +153,6 @@ class CarController(CarControllerBase, EsccCarController, LeadDataCarController,
 
       self.angle_filter.update_alpha(float(np.interp(CS.out.vEgo, [5, 10, 20], [0.2, 0.1, 0.0])))
       desired_angle = self.angle_filter.update(desired_angle)
-      if self.CP.flags & HyundaiFlags.CANFD_LFA_ALT:
-        # applied before the rate/lateral-accel limits below, so those still bound what is sent
-        desired_angle = float(np.clip(lfa_alt_curve_compensation(desired_angle),
-                                      -self.params.ANGLE_LIMITS.STEER_ANGLE_MAX, self.params.ANGLE_LIMITS.STEER_ANGLE_MAX))
 
       apply_angle = apply_steer_angle_limits_vm(desired_angle, self.apply_angle_last, v_ego_raw, CS.out.steeringAngleDeg, CC.latActive, self.params, self.VM)
 
