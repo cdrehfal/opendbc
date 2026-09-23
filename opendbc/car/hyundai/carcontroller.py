@@ -7,7 +7,7 @@ from opendbc.car import Bus, DT_CTRL, make_tester_present_msg, structs, rate_lim
 from opendbc.car.lateral import apply_driver_steer_torque_limits, common_fault_avoidance, apply_steer_angle_limits_vm
 from opendbc.car.common.conversions import Conversions as CV
 from opendbc.car.hyundai import hyundaicanfd, hyundaican
-from opendbc.car.hyundai.ccnc_lfa import CameraLfaOff, COPIES_PER_FRAME
+from opendbc.car.hyundai.ccnc_lfa import CameraLfaOff, COPIES_PER_FRAME, cluster_lfa_icon
 from opendbc.car.hyundai.hyundaicanfd import CanBus
 from opendbc.car.hyundai.values import HyundaiFlags, Buttons, CarControllerParams, CAR
 from opendbc.car.interfaces import CarControllerBase
@@ -311,9 +311,11 @@ class CarController(CarControllerBase, EsccCarController, LeadDataCarController,
         # The camera raises FAULT_LSS/LFA/DAS/ESS on the cluster as soon as the MDPS reports that it is
         # executing an ADAS angle request the camera didn't make. Republish its own frames with those
         # cleared, and draw our own icons.
+        standstill = CS.out.standstill or abs(CS.out.vEgo) <= max(self.CP.minSteerSpeed, 0.3)  # as controlsd gates latActive
+        lfa_icon = cluster_lfa_icon(self.lfa_icon, CC_SP.mads.active, standstill)
         can_sends.extend(hyundaicanfd.create_ccnc(self.packer, self.CAN, self.CP.openpilotLongitudinalControl, CC.enabled, CC.hudControl,
                                                   CC.leftBlinker, CC.rightBlinker, CS.msg_161, CS.msg_162, CS.msg_1b5, CS.is_metric,
-                                                  CS.out, CS.main_cruise_enabled, self.lfa_icon,
+                                                  CS.out, CS.main_cruise_enabled, lfa_icon,
                                                   hyundaicanfd.lane_change_available(CS.out.vEgo, CC_SP)))
       elif not self.CP.flags & HyundaiFlags.CANFD_LFA_ALT:
         # LFA_ALT cars without ccNC forward the camera's LFAHDA_CLUSTER, keeping the cluster's stock indicators

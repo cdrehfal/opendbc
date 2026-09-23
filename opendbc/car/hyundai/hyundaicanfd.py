@@ -2,6 +2,7 @@ import numpy as np
 from opendbc.car import CanBusBase
 from opendbc.car.common.conversions import Conversions as CV
 from opendbc.car.crc import CRC16_XMODEM
+from opendbc.car.hyundai.ccnc_lfa import CAMERA_HANDS_ON_ALERTS
 from opendbc.car.hyundai.values import HyundaiFlags, ActvACISta, ESA_ActvSta
 from opendbc.sunnypilot.car.hyundai.lead_data_ext import CanFdLeadData
 
@@ -152,8 +153,6 @@ def create_lfahda_cluster(packer, CAN, enabled, lfa_icon):
   return packer.make_can_msg("LFAHDA_CLUSTER", CAN.ECAN, values)
 
 
-
-
 def create_mdps_mirror(packer, CAN, mdps_msg, cam_lvl2_request, counter):
   """Copy of the real MDPS frame for the camera bus, consistent with the camera's own request.
 
@@ -193,6 +192,9 @@ def create_ccnc(packer, CAN, openpilotLongitudinalControl, enabled, hud, leftBli
   for f in {"FAULT_LSS", "FAULT_HDA", "FAULT_DAS", "FAULT_LFA", "FAULT_DAW", "FAULT_ESS"}:
     msg_162[f] = 0
   if msg_161["ALERTS_2"] == 5:
+    msg_161.update({"ALERTS_2": 0, "SOUNDS_2": 0})
+  if msg_161["ALERTS_2"] in CAMERA_HANDS_ON_ALERTS:
+    # the camera's LFA/LKA asking for hands on the wheel: it isn't steering, openpilot is (see ccnc_lfa.py)
     msg_161.update({"ALERTS_2": 0, "SOUNDS_2": 0})
   if msg_161["ALERTS_3"] == 17:
     msg_161["ALERTS_3"] = 0

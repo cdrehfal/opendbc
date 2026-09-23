@@ -18,6 +18,29 @@ from opendbc.car import DT_CTRL
 LFA_ICON_STANDBY = 1
 LFA_ICON_ACTIVE = 2
 
+# openpilot's own icon codes (MadsCarController.create_lfa_icon)
+OP_ICON_PAUSED = 1
+OP_ICON_STEERING = 2
+OP_ICON_HANDING_BACK = 3
+
+# Camera messages on the cluster (0x161 ALERTS_2) that ask the driver to hold the wheel. They come from the
+# camera's own LFA/LKA, which never has the rack while openpilot is plugged in: its LKA "intervenes" on a
+# line it thinks the car is drifting over, nothing happens, and it tells the driver to take the wheel.
+# openpilot's driver monitoring covers attention; these are noise here.
+CAMERA_HANDS_ON_ALERTS = (1, 2)  # KEEP_HANDS_ON_STEERING_WHEEL, ..._RED
+
+
+def cluster_lfa_icon(op_icon: int, mads_active: bool, standstill: bool) -> int:
+  """The icon code the cluster is drawn from.
+
+  Lateral control drops out at standstill (latActive is false below the minimum steer speed) and comes back
+  on its own as soon as the car moves. While that is the only reason it is off, keep the wheel lit: to the
+  driver nothing has changed. A real pause or disengage (mads no longer active) still turns it off.
+  """
+  if op_icon in (OP_ICON_PAUSED, OP_ICON_HANDING_BACK) and mads_active and standstill:
+    return OP_ICON_STEERING
+  return op_icon
+
 ON_TIME = 1.0          # camera LFA seen on this long before pressing (its off transition blinks for ~1 s)
 PRESS_TIME = 0.2       # hold the button this long: a real short press is ~0.15 s; the camera's long press is > 2 s
 RETRY_TIME = 3.0       # wait this long for the camera to react before pressing again

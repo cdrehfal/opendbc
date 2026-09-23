@@ -1,5 +1,6 @@
 from opendbc.car import DT_CTRL
-from opendbc.car.hyundai.ccnc_lfa import CameraLfaOff, ON_TIME, PRESS_TIME, RETRY_TIME, SLOW_RETRY_TIME, USER_BUTTON_QUIET, MAX_TRIES
+from opendbc.car.hyundai.ccnc_lfa import CameraLfaOff, ON_TIME, PRESS_TIME, RETRY_TIME, SLOW_RETRY_TIME, USER_BUTTON_QUIET, MAX_TRIES, \
+                                        cluster_lfa_icon
 
 ON_FRAMES = int(ON_TIME / DT_CTRL)
 PRESS_FRAMES = int(PRESS_TIME / DT_CTRL)
@@ -99,7 +100,7 @@ class TestCcncLaneChangeIcon:
     assert not lane_change_available(70 * CV.MPH_TO_MS, self._cc_sp(-1))
     assert lane_change_available(70 * CV.MPH_TO_MS, self._cc_sp())  # param not passed: behave as before
 
-  def _icons(self, available, left_blinker=True):
+  def _icons(self, available, left_blinker=True, lfa_icon=2, cam_161=None):
     from types import SimpleNamespace as NS
     from opendbc.can import CANPacker, CANParser
     from opendbc.car import gen_empty_fingerprint
@@ -108,6 +109,7 @@ class TestCcncLaneChangeIcon:
     parser = CANParser("hyundai_canfd_generated", [("CCNC_0x161", 20)], 0)
     names = [s.name for s in packer.dbc.addr_to_msg[0x161].sigs.values()] if hasattr(packer, "dbc") else []
     msg_161 = dict.fromkeys(names, 0) if names else {}
+    msg_161.update(cam_161 or {})
     msg_162 = {}
     msg_1b5 = {"Info_LftLnPosVal": -1.7, "Info_RtLnPosVal": 1.7, "Info_LftLnQualSta": 3, "Info_RtLnQualSta": 3,
                "Longitudinal_Distance": 0}
@@ -115,7 +117,7 @@ class TestCcncLaneChangeIcon:
              leadVisible=False)
     out = NS(steeringAngleDeg=0.0, vEgo=30.0, leftBlindspot=False, rightBlindspot=False, vCruiseCluster=0)
     msgs = create_ccnc(packer, CanBus(None, gen_empty_fingerprint()), False, True, hud, left_blinker, False, msg_161, msg_162,
-                       msg_1b5, False, out, True, 2, available)
+                       msg_1b5, False, out, True, lfa_icon, available)
     parser.update([(0, [(m[0], m[1], 0) for m in msgs])])
     return parser.vl["CCNC_0x161"]
 
@@ -128,3 +130,37 @@ class TestCcncLaneChangeIcon:
     v = self._icons(True)
     assert v["LCA_LEFT_ICON"] == 2 and v["LCA_LEFT_ARROW"] == 2
     assert v["LANELINE_LEFT"] == 6
+
+
+class TestCcncCameraHandsOnAlert:
+  # the camera's "keep hands on the steering wheel" (its own LKA/LFA, which isn't steering) is not shown
+  def test_hands_on_alerts_hidden(self):
+    for alert in (1, 2):
+      v = TestCcncLaneChangeIcon()._icons(True, cam_161={"ALERTS_2": alert, "SOUNDS_2": 2})
+      assert v["ALERTS_2"] == 0 and v["SOUNDS_2"] == 0
+
+  def test_other_alerts_kept(self):
+    v = TestCcncLaneChangeIcon()._icons(True, cam_161={"ALERTS_2": 3, "SOUNDS_2": 2})
+    assert v["ALERTS_2"] == 3 and v["SOUNDS_2"] == 2
+
+
+class TestClusterLfaIcon:
+  # green wheel while lateral is only waiting for the car to move again
+  def test_standstill_keeps_wheel_lit(self):
+    assert cluster_lfa_icon(1, True, True) == 2   # paused by standstill
+    assert cluster_lfa_icon(3, True, True) == 2   # the 1 s hand-back blink when the car stops
+    assert cluster_lfa_icon(2, True, True) == 2
+
+  def test_off_when_not_active(self):
+    assert cluster_lfa_icon(1, False, True) == 1  # driver paused / disengaged lateral while stopped
+    assert cluster_lfa_icon(3, False, True) == 3
+    assert cluster_lfa_icon(0, True, True) == 0
+
+  def test_moving_unchanged(self):
+    for icon in (0, 1, 2, 3):
+      assert cluster_lfa_icon(icon, True, False) == icon
+
+  def test_cluster_wheel(self):
+    t = TestCcncLaneChangeIcon()
+    assert t._icons(True, lfa_icon=1)["LFA_ICON"] == 0
+    assert t._icons(True, lfa_icon=cluster_lfa_icon(1, True, True))["LFA_ICON"] == 2
