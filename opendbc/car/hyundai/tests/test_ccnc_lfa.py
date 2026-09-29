@@ -1,6 +1,6 @@
 from opendbc.car import DT_CTRL
-from opendbc.car.hyundai.ccnc_lfa import CameraLfaOff, ON_TIME, PRESS_TIME, RETRY_TIME, SLOW_RETRY_TIME, USER_BUTTON_QUIET, MAX_TRIES, \
-                                        cluster_lfa_icon
+from opendbc.car.hyundai.ccnc_lfa import CameraLfaOff, CcncCounters, ON_TIME, PRESS_TIME, RETRY_TIME, SLOW_RETRY_TIME, \
+                                        USER_BUTTON_QUIET, MAX_TRIES, cluster_lfa_icon
 
 ON_FRAMES = int(ON_TIME / DT_CTRL)
 PRESS_FRAMES = int(PRESS_TIME / DT_CTRL)
@@ -100,25 +100,27 @@ class TestCcncLaneChangeIcon:
     assert not lane_change_available(70 * CV.MPH_TO_MS, self._cc_sp(-1))
     assert lane_change_available(70 * CV.MPH_TO_MS, self._cc_sp())  # param not passed: behave as before
 
-  def _icons(self, available, left_blinker=True, lfa_icon=2, cam_161=None):
+  def _icons(self, available, left_blinker=True, lfa_icon=2, cam_161=None, counters=None, both=False):
     from types import SimpleNamespace as NS
     from opendbc.can import CANPacker, CANParser
     from opendbc.car import gen_empty_fingerprint
     from opendbc.car.hyundai.hyundaicanfd import CanBus, create_ccnc
     packer = CANPacker("hyundai_canfd_generated")
-    parser = CANParser("hyundai_canfd_generated", [("CCNC_0x161", 20)], 0)
+    parser = CANParser("hyundai_canfd_generated", [("CCNC_0x161", 20), ("CCNC_0x162", 20)], 0)
     names = [s.name for s in packer.dbc.addr_to_msg[0x161].sigs.values()] if hasattr(packer, "dbc") else []
     msg_161 = dict.fromkeys(names, 0) if names else {}
     msg_161.update(cam_161 or {})
-    msg_162 = {}
+    msg_162 = dict.fromkeys([s.name for s in packer.dbc.addr_to_msg[0x162].sigs.values()], 0) if hasattr(packer, "dbc") else {}
     msg_1b5 = {"Info_LftLnPosVal": -1.7, "Info_RtLnPosVal": 1.7, "Info_LftLnQualSta": 3, "Info_RtLnQualSta": 3,
                "Longitudinal_Distance": 0}
     hud = NS(leftLaneVisible=True, rightLaneVisible=True, leftLaneDepart=False, rightLaneDepart=False, leadDistanceBars=2,
              leadVisible=False)
     out = NS(steeringAngleDeg=0.0, vEgo=30.0, leftBlindspot=False, rightBlindspot=False, vCruiseCluster=0)
     msgs = create_ccnc(packer, CanBus(None, gen_empty_fingerprint()), False, True, hud, left_blinker, False, msg_161, msg_162,
-                       msg_1b5, False, out, True, lfa_icon, available)
+                       msg_1b5, False, out, True, lfa_icon, available, counters=counters)
     parser.update([(0, [(m[0], m[1], 0) for m in msgs])])
+    if both:
+      return parser.vl["CCNC_0x161"], parser.vl["CCNC_0x162"]
     return parser.vl["CCNC_0x161"]
 
   def test_icon_hidden_when_unavailable(self):
@@ -164,3 +166,36 @@ class TestClusterLfaIcon:
     t = TestCcncLaneChangeIcon()
     assert t._icons(True, lfa_icon=1)["LFA_ICON"] == 0
     assert t._icons(True, lfa_icon=cluster_lfa_icon(1, True, True))["LFA_ICON"] == 2
+
+
+class TestCcncCounters:
+  # the republished cluster frames carry openpilot's own alive counters, never a repeat of the camera's
+  def test_continuous_while_camera_frame_repeats(self):
+    c = CcncCounters()
+    cam_161, cam_162 = {"COUNTER": 100}, {"COUNTER": 7}
+    seen = []
+    for i in range(600):
+      if i % 50 == 0:
+        # the camera's frame comes in slightly slower than it is re-sent: every so often the same one is used twice
+        pass
+      else:
+        cam_161["COUNTER"] = (cam_161["COUNTER"] + 1) % 256
+        cam_162["COUNTER"] = (cam_162["COUNTER"] + 1) % 256
+      seen.append(dict(c.next(cam_161, cam_162)))
+    for k in ("CCNC_0x161", "CCNC_0x162"):
+      steps = [(b[k] - a[k]) % 256 for a, b in zip(seen, seen[1:], strict=False)]
+      assert set(steps) == {1}
+    # picks up where the camera's counter was
+    assert seen[0] == {"CCNC_0x161": 101, "CCNC_0x162": 8}
+
+  def test_packed_counters(self):
+    t = TestCcncLaneChangeIcon()
+    c = CcncCounters()
+    v1, v2 = t._icons(True, cam_161={"COUNTER": 250}, counters=c.next({"COUNTER": 250}, {"COUNTER": 3}), both=True)
+    assert v1["COUNTER"] == 251 and v2["COUNTER"] == 4
+    v1, v2 = t._icons(True, cam_161={"COUNTER": 250}, counters=c.next({"COUNTER": 250}, {"COUNTER": 3}), both=True)  # same camera frame again
+    assert v1["COUNTER"] == 252 and v2["COUNTER"] == 5
+
+  def test_passthrough_without_counters(self):
+    v1, v2 = TestCcncLaneChangeIcon()._icons(True, cam_161={"COUNTER": 33}, both=True)
+    assert v1["COUNTER"] == 33

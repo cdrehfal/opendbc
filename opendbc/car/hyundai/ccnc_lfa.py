@@ -41,6 +41,26 @@ def cluster_lfa_icon(op_icon: int, mads_active: bool, standstill: bool) -> int:
     return OP_ICON_STEERING
   return op_icon
 
+class CcncCounters:
+  """Alive counters for the cluster messages (0x161/0x162) openpilot republishes.
+
+  The camera sends them at 20 Hz on its own clock and openpilot re-sends its latest copy at 20 Hz on its
+  own, so the two drift: every few seconds a camera frame is sent twice (and another one skipped). Passing
+  the camera's counter through then repeats a counter, and the cluster (which checks the counter) drops
+  that frame and briefly draws a blank box. openpilot's copies get their own counters, one step per send,
+  seeded from the camera's so the sequence continues where the camera's left off (as with the MDPS mirror).
+  """
+  def __init__(self):
+    self.counters: dict[str, int] | None = None
+
+  def next(self, msg_161: dict, msg_162: dict) -> dict[str, int]:
+    if self.counters is None:
+      self.counters = {"CCNC_0x161": int(msg_161["COUNTER"]), "CCNC_0x162": int(msg_162["COUNTER"])}
+    for k in self.counters:
+      self.counters[k] = (self.counters[k] + 1) % 256
+    return self.counters
+
+
 ON_TIME = 1.0          # camera LFA seen on this long before pressing (its off transition blinks for ~1 s)
 PRESS_TIME = 0.2       # hold the button this long: a real short press is ~0.15 s; the camera's long press is > 2 s
 RETRY_TIME = 3.0       # wait this long for the camera to react before pressing again

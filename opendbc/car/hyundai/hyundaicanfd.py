@@ -188,7 +188,12 @@ def lane_change_available(v_ego: float, CC_SP) -> bool:
 
 
 def create_ccnc(packer, CAN, openpilotLongitudinalControl, enabled, hud, leftBlinker, rightBlinker, msg_161, msg_162, msg_1b5,
-                is_metric, out, main_cruise_enabled, lfa_icon, lane_change_available=True):
+                is_metric, out, main_cruise_enabled, lfa_icon, lane_change_available=True, counters=None):
+  if counters is not None:
+    # openpilot's own alive counters (see CcncCounters): the camera's are re-sent on openpilot's clock, so
+    # passing them through repeats one every few seconds, which the cluster shows as a glitch
+    msg_161["COUNTER"] = counters["CCNC_0x161"]
+    msg_162["COUNTER"] = counters["CCNC_0x162"]
   for f in {"FAULT_LSS", "FAULT_HDA", "FAULT_DAS", "FAULT_LFA", "FAULT_DAW", "FAULT_ESS"}:
     msg_162[f] = 0
   if msg_161["ALERTS_2"] == 5:

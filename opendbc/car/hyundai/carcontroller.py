@@ -7,7 +7,7 @@ from opendbc.car import Bus, DT_CTRL, make_tester_present_msg, structs, rate_lim
 from opendbc.car.lateral import apply_driver_steer_torque_limits, common_fault_avoidance, apply_steer_angle_limits_vm
 from opendbc.car.common.conversions import Conversions as CV
 from opendbc.car.hyundai import hyundaicanfd, hyundaican
-from opendbc.car.hyundai.ccnc_lfa import CameraLfaOff, COPIES_PER_FRAME, cluster_lfa_icon
+from opendbc.car.hyundai.ccnc_lfa import CameraLfaOff, CcncCounters, COPIES_PER_FRAME, cluster_lfa_icon
 from opendbc.car.hyundai.hyundaicanfd import CanBus
 from opendbc.car.hyundai.values import HyundaiFlags, Buttons, CarControllerParams, CAR
 from opendbc.car.interfaces import CarControllerBase
@@ -114,6 +114,7 @@ class CarController(CarControllerBase, EsccCarController, LeadDataCarController,
     self.angle_filter = FirstOrderFilter(0.0, 0.2, DT_CTRL)
     self.mdps_mirror_counter = None  # alive counter for the camera's copy of MDPS (LFA_ALT + ccNC)
     self.camera_lfa_off = CameraLfaOff()  # keeps the camera's own LFA (and its hands-on timer) off (LFA_ALT + ccNC)
+    self.ccnc_counters = CcncCounters()  # alive counters for the republished cluster messages (LFA_ALT + ccNC)
 
     # Vehicle model used for lateral limiting
     self.VM = VehicleModel(CP)
@@ -313,10 +314,11 @@ class CarController(CarControllerBase, EsccCarController, LeadDataCarController,
         # cleared, and draw our own icons.
         standstill = CS.out.standstill or abs(CS.out.vEgo) <= max(self.CP.minSteerSpeed, 0.3)  # as controlsd gates latActive
         lfa_icon = cluster_lfa_icon(self.lfa_icon, CC_SP.mads.active, standstill)
+        counters = self.ccnc_counters.next(CS.msg_161, CS.msg_162) if self.CP.flags & HyundaiFlags.CANFD_LFA_ALT else None
         can_sends.extend(hyundaicanfd.create_ccnc(self.packer, self.CAN, self.CP.openpilotLongitudinalControl, CC.enabled, CC.hudControl,
                                                   CC.leftBlinker, CC.rightBlinker, CS.msg_161, CS.msg_162, CS.msg_1b5, CS.is_metric,
                                                   CS.out, CS.main_cruise_enabled, lfa_icon,
-                                                  hyundaicanfd.lane_change_available(CS.out.vEgo, CC_SP)))
+                                                  hyundaicanfd.lane_change_available(CS.out.vEgo, CC_SP), counters=counters))
       elif not self.CP.flags & HyundaiFlags.CANFD_LFA_ALT:
         # LFA_ALT cars without ccNC forward the camera's LFAHDA_CLUSTER, keeping the cluster's stock indicators
         can_sends.append(hyundaicanfd.create_lfahda_cluster(self.packer, self.CAN, CC.enabled, self.lfa_icon))
