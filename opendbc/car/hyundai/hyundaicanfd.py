@@ -188,7 +188,7 @@ def lane_change_available(v_ego: float, CC_SP) -> bool:
 
 
 def create_ccnc(packer, CAN, openpilotLongitudinalControl, enabled, hud, leftBlinker, rightBlinker, msg_161, msg_162, msg_1b5,
-                is_metric, out, main_cruise_enabled, lfa_icon, lane_change_available=True, counters=None):
+                is_metric, out, main_cruise_enabled, lfa_icon, lane_change_available=True, counters=None, side_cars=None):
   if counters is not None:
     # openpilot's own alive counters (see CcncCounters): the camera's are re-sent on openpilot's clock, so
     # passing them through repeats one every few seconds, which the cluster shows as a glitch
@@ -295,6 +295,10 @@ def create_ccnc(packer, CAN, openpilotLongitudinalControl, enabled, hud, leftBli
 
     msg_162["LEAD"] = 0 if not main_cruise_enabled else 2 if enabled else 1
     msg_162["LEAD_DISTANCE"] = msg_1b5["Longitudinal_Distance"]
+
+  # cars in the neighbouring lanes and the blind spots, which the HDA1 camera leaves empty (see ccnc_radar.py)
+  if side_cars is not None:
+    msg_162.update(side_cars)
 
   return [packer.make_can_msg(msg, CAN.ECAN, data) for msg, data in [("CCNC_0x161", msg_161), ("CCNC_0x162", msg_162)]]
 

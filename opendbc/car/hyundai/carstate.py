@@ -5,6 +5,7 @@ import math
 from opendbc.can import CANDefine, CANParser
 from opendbc.car import Bus, create_button_events, structs
 from opendbc.car.common.conversions import Conversions as CV
+from opendbc.car.hyundai.ccnc_radar import ClusterRadar
 from opendbc.car.hyundai.hyundaicanfd import CanBus
 from opendbc.car.hyundai.values import HyundaiFlags, CAR, DBC, Buttons, CarControllerParams
 from opendbc.car.interfaces import CarStateBase
@@ -73,6 +74,9 @@ class CarState(CarStateBase, EsccCarStateBase, MadsCarState, CarStateExt):
     self.cam_lfa_alt_lvl2 = 1
     # the camera's own LFA_ICON (0 off, 1 standby, 2 active, 3 handing back), read before we rewrite it
     self.cam_lfa_icon = 0
+    # LFA_ALT + ccNC: front radar tracks for the cars beside us on the cluster (fed raw by CarInterface.update)
+    self.cluster_radar = ClusterRadar(CanBus(CP).ACAN) if (CP.flags & HyundaiFlags.CANFD_LFA_ALT and CP.flags & HyundaiFlags.CCNC and
+                                                           not CP.flags & HyundaiFlags.CANFD_LKA_STEER_MSG) else None
 
     # On some cars, CLU15->CF_Clu_VehicleSpeed can oscillate faster than the dash updates. Sample at 5 Hz
     self.cluster_speed = 0

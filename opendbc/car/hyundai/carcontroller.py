@@ -315,10 +315,13 @@ class CarController(CarControllerBase, EsccCarController, LeadDataCarController,
         standstill = CS.out.standstill or abs(CS.out.vEgo) <= max(self.CP.minSteerSpeed, 0.3)  # as controlsd gates latActive
         lfa_icon = cluster_lfa_icon(self.lfa_icon, CC_SP.mads.active, standstill)
         counters = self.ccnc_counters.next(CS.msg_161, CS.msg_162) if self.CP.flags & HyundaiFlags.CANFD_LFA_ALT else None
+        side_cars = CS.cluster_radar.update(CS.out.vEgo, CS.msg_1b5, CS.out.leftBlindspot, CS.out.rightBlindspot) \
+                    if CS.cluster_radar is not None else None
         can_sends.extend(hyundaicanfd.create_ccnc(self.packer, self.CAN, self.CP.openpilotLongitudinalControl, CC.enabled, CC.hudControl,
                                                   CC.leftBlinker, CC.rightBlinker, CS.msg_161, CS.msg_162, CS.msg_1b5, CS.is_metric,
                                                   CS.out, CS.main_cruise_enabled, lfa_icon,
-                                                  hyundaicanfd.lane_change_available(CS.out.vEgo, CC_SP), counters=counters))
+                                                  hyundaicanfd.lane_change_available(CS.out.vEgo, CC_SP), counters=counters,
+                                                  side_cars=side_cars))
       elif not self.CP.flags & HyundaiFlags.CANFD_LFA_ALT:
         # LFA_ALT cars without ccNC forward the camera's LFAHDA_CLUSTER, keeping the cluster's stock indicators
         can_sends.append(hyundaicanfd.create_lfahda_cluster(self.packer, self.CAN, CC.enabled, self.lfa_icon))

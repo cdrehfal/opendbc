@@ -24,6 +24,13 @@ class CarInterface(CarInterfaceBase):
   CarController = CarController
   RadarInterface = RadarInterface
 
+  def update(self, can_packets):
+    # LFA_ALT + ccNC: the radar tracks for the cluster are read here, outside the CAN parsers, so they can never
+    # affect canValid (see ccnc_radar.py)
+    if self.CS.cluster_radar is not None:
+      self.CS.cluster_radar.update_frames(can_packets)
+    return super().update(can_packets)
+
   DRIVABLE_GEARS = (structs.CarState.GearShifter.sport, structs.CarState.GearShifter.manumatic)
 
   @staticmethod
